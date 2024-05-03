@@ -152,8 +152,14 @@ float posX = 0;
 float posY = 0;
 float posZ = 0;
 
+float sigX = 0;
+float sigY = 0;
+float sigZ = 0;
+
 float lastTime = 0;
 
+float ChangeBiasH = 2;
+float ChangeBiasL = 0.5;
 float avg = 0;
 int counter = 0;
 
@@ -178,7 +184,7 @@ void dmpDataReady() {
 #include <WiFi.h>
 
 // REPLACE WITH THE RECEIVER'S MAC Address
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t broadcastAddress[] = {0x30, 0xC6, 0xF7, 0x23, 0x82, 0x7C};
 
 // Structure example to send data
 // Must match the receiver structure
@@ -200,8 +206,8 @@ esp_now_peer_info_t peerInfo;
 
 // callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("\r\nLast Packet Send Status:\t");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  //Serial.print("\r\nLast Packet Send Status:\t");
+  //Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
 
@@ -271,9 +277,9 @@ void setup() {
     pinMode(INTERRUPT_PIN, INPUT);
 
     // verify connection
-    Serial.println(F("Testing device connections..."));
-    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-
+    //Serial.println(F("Testing device connections..."));
+    //Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
+    
     // wait for ready
     //Serial.println(F("\nSend any character to begin DMP programming and demo: "));
     while (Serial.available() && Serial.read()); // empty buffer
@@ -285,12 +291,21 @@ void setup() {
     devStatus = mpu.dmpInitialize();
 
     // supply your own gyro offsets here, scaled for min sensitivity
-    mpu.setXGyroOffset(140);
-    mpu.setYGyroOffset(-9);
-    mpu.setZGyroOffset(16); 
-    mpu.setXAccelOffset(-1544);// 1688 factory default for my test chip
-    mpu.setYAccelOffset(94);
-    mpu.setZAccelOffset(1050);
+    /*
+    mpu.setXGyroOffset(120);
+    mpu.setYGyroOffset(-23);
+    mpu.setZGyroOffset(27); 
+    mpu.setXAccelOffset(-1538);
+    mpu.setYAccelOffset(64);
+    mpu.setZAccelOffset(950);
+    */
+    mpu.setXGyroOffset(-579);
+    mpu.setYGyroOffset(-10);
+    mpu.setZGyroOffset(-38); 
+    mpu.setXAccelOffset(-2035);
+    mpu.setYAccelOffset(-1808);
+    mpu.setZAccelOffset(1260);
+    
     // make sure it worked (returns 0 if so)
     if (devStatus == 0) {
         // Calibration Time: generate offsets and calibrate our MPU6050
@@ -365,9 +380,6 @@ void loop() {
         #endif
 
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
-
-            
-            // display Euler angles in degrees
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetAccel(&aa, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
@@ -377,60 +389,128 @@ void loop() {
         
             float currentStep = millis()-lastTime;
             lastTime = millis();
-
-            float ChangeBiasVx = 2;
-            float ChangeBiasVy = 2;
-            float ChangeBiasVz = 2;
-            float ChangeBiasPx = 2;
-            float ChangeBiasPy = 2;
-            float ChangeBiasPz = 2;
+            
+            float ChangeBiasVx = ChangeBiasH;
+            float ChangeBiasVy = ChangeBiasH;
+            float ChangeBiasVz = ChangeBiasH;
+            float ChangeBiasPx = ChangeBiasH;
+            float ChangeBiasPy = ChangeBiasH;
+            float ChangeBiasPz = ChangeBiasH;
 
             if (aaWorld.x > 0 && Vx > 0 || aaWorld.x < 0 && Vx < 0){
-                ChangeBiasVx = 0.5;
+                ChangeBiasVx = ChangeBiasL;
             }
             if (aaWorld.y > 0 && Vy > 0 || aaWorld.y < 0 && Vy < 0){
-                ChangeBiasVy = 0.5;
+                ChangeBiasVy = ChangeBiasL;
             }
             if (aaWorld.z > 0 && Vz > 0 || aaWorld.z < 0 && Vz < 0){
-                ChangeBiasVz = 0.5;
+                ChangeBiasVz = ChangeBiasL;
             }
             if (posX > 0 && Vx > 0 || posX < 0 && Vx < 0){
-                ChangeBiasPx = 0.5;
+                ChangeBiasPx = ChangeBiasL;
             }
             if (posY > 0 && Vy > 0 || posY < 0 && Vy < 0){
-                ChangeBiasPy = 0.5;
+                ChangeBiasPy = ChangeBiasL;
             }
             if (posZ > 0 && Vz > 0 || posZ < 0 && Vz < 0){
-                ChangeBiasPz = 0.5;
+                ChangeBiasPz = ChangeBiasL;
             }
+
+            float SigVx = 1000/(1+exp((-Vx-550)/100)) + 1000/(1+exp((-Vx+550)/100))-1000;
+            float SigVy = 1000/(1+exp((-Vy-550)/100)) + 1000/(1+exp((-Vy+550)/100))-1000;
+            float SigVz = 1000/(1+exp((-Vz-550)/100)) + 1000/(1+exp((-Vz+550)/100))-1000;
 
             Vx = ChangeBiasVx*aaWorld.x*currentStep/1000+Vx;
             Vy = ChangeBiasVy*aaWorld.y*currentStep/1000+Vy;
             Vz = ChangeBiasVz*aaWorld.z*currentStep/1000+Vz;
-            posX = ChangeBiasVx*1/2*(aaWorld.x)*currentStep/1000*currentStep/1000 + ChangeBiasPx*Vx*currentStep/1000 + posX;
-            posY = ChangeBiasVy*1/2*(aaWorld.y)*currentStep/1000*currentStep/1000 + ChangeBiasPy*Vy*currentStep/1000 + posY;
-            posZ = ChangeBiasVz*1/2*(aaWorld.z)*currentStep/1000*currentStep/1000 + ChangeBiasPz*Vz*currentStep/1000 + posZ;
-            
-            float sigX = 4000/(1+exp(-posX/500))-2000;
-            float sigY = 4000/(1+exp(-posY/500))-2000;
-            float sigZ = 4000/(1+exp(-posZ/500))-2000;
 
-            if (posX > 3000){
-                posX = 3000;
+            /*
+          posX = ChangeBiasVx*1/2*(aaWorld.x)*currentStep/1000*currentStep/1000 + ChangeBiasPx*Vx*currentStep/1000 + posX;
+            if ( ypr[0]* 180/M_PI > 20 || ypr[0]* 180/M_PI < -20){
+                 posY = ChangeBiasVy*1/2*(aaWorld.y)*currentStep/1000*currentStep/1000 + ChangeBiasPy*Vy*currentStep/1000 + posY - ypr[0]* 180/M_PI/60;
+            } else {
+                posY = ChangeBiasVy*1/2*(aaWorld.y)*currentStep/1000*currentStep/1000 + ChangeBiasPy*Vy*currentStep/1000 + posY;
             }
-            if (posY > 3000){
-                posY = 3000;
+            
+            posZ = ChangeBiasVz*1/2*(aaWorld.z)*currentStep/1000*currentStep/1000 + ChangeBiasPz*Vz*currentStep/1000 + posZ;
+
+            if (posY > 140){
+                posY = 140;
+                Vy = 0;
             }
-            if (posX < -3000){
-                posX = -3000;
+            if (posY < -140){
+                posY = -140;
+                Vy = 0;
             }
-            if (posY < -3000){
-                posY = -3000;
+            if (posX < -140){
+                posX = -140;
+                Vx = 0;
             }
+            if (posX > 140){
+                posX = 140;
+                Vx = 0;
+            }
+            if (posZ > 140){
+                posZ = 140;
+                Vz = 0;
+            }
+            if (posZ < -140){
+                posZ = -140;
+                Vz = 0;                
+            }*/
+
+            
+            sigX = 50/(1+exp(-posX/10-100/30))+ 50/(1+exp(-posX/10+100/30))-50;
+            sigY = 50/(1+exp(-posY/10-100/30))+ 50/(1+exp(-posY/10+100/30))-50;
+            sigZ = 30/(1+exp(-posZ/10-100/30))+ 30/(1+exp(-posZ/10+100/30))-20;
+
+            
 
             int rx = ypr[1]* 180/M_PI;
             int ry = ypr[2]* 180/M_PI;
             int rz = ypr[0]* 180/M_PI;
+
+
+
+            if (counter == 100){
+                posX = 0;
+                posY = 0;
+                posZ = 0;
+                Vx = 0;
+                Vy = 0;
+                Vz = 0;
+                counter++;
+            } else {
+                counter++;
+            }
+
+            posX = 0;
+            if (rx > -30 && rx < 30){
+                posY = (rz+25)*0.7 + (ChangeBiasVy*1/2*(aaWorld.y)*currentStep/1000*currentStep/1000 + ChangeBiasPy*Vy*currentStep/1000 + posY)*0.3;
+            } else {
+                //(ChangeBiasVy*1/2*(aaWorld.y)*currentStep/1000*currentStep/1000 + ChangeBiasPy*Vy*currentStep/1000 + posY)*0.3;
+            }
+            posZ = ry*0.7;
+            //(ChangeBiasVz*1/2*(aaWorld.z)*currentStep/1000*currentStep/1000 + ChangeBiasPz*Vz*currentStep/1000 + posZ)*0.3;
+
+            if (posY > 90){
+                posY = 90;
+            }
+            if (posY < -90){
+                posY = -90;
+            }
+            if (posX < -90){
+                posX = -90;
+            }
+            if (posX > 90){
+                posX = 90;
+            }
+            if (posZ > 90){
+                posZ = 90;
+            }
+            if (posZ < -90){
+                posZ = -90;               
+            }
 
             myData.id = 1;
             myData.rx = rx;
@@ -439,17 +519,20 @@ void loop() {
             myData.posX = posX;
             myData.posY = posY;
             myData.posZ = posZ;
-
-            Serial.println("x"+String(rx)+"y"+String(ry)+"z"+String(rz)+"a"+String(sigX*2)+"b"+String(sigY*2)+"c"+String(0));
-
+            
+            Serial.println("x"+String(rx)+"y"+String(ry)+"z"+String(rz)+"a"+String(posX)+"b"+String(posY)+"c"+String(-posZ));
+            //Serial.println("x: "+String(SigVx)+" y: "+ String(SigVy)+ " z: "+ String(SigVz));
+            //Serial.println(aaWorld.z);
             // Send message via ESP-NOW
+            //Serial.println(rx);
+
             esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
             
             if (result == ESP_OK) {
-                Serial.println("Sent with success");
+                //Serial.println("Sent with success");
             }
             else {
-                Serial.println("Error sending the data");
+                //Serial.println("Error sending the data");
             }
 
             //Serial.print("ypr\t");
